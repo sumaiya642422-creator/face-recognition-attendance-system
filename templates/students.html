@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Students · SmartAttend AI{% endblock %}
+{% block page_name %}Students{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div>
+    <div class="eyebrow">PEOPLE DIRECTORY</div>
+    <h1>Registered <span>students</span></h1>
+    <p>Register students and manage their face enrollment.</p>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    {% if students %}
+    <form method="post" action="{{ url_for('clear_all_students') }}" onsubmit="return confirm('This will permanently delete ALL students, attendance records, face photos, and enrolled face data. This cannot be undone. Continue?');">
+      <button type="submit" class="btn outline small danger">Clear all students</button>
+    </form>
+    {% endif %}
+    <a href="{{ url_for('add_student') }}" class="btn primary">＋ Add student</a>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">
+    <div>
+      <h2>Student list</h2>
+      <p>{{ students|length }} student profile(s)</p>
+    </div>
+  </div>
+  {% if students %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>STUDENT</th><th>ROLL</th><th>CLASS / SECTION</th><th>REGISTERED</th><th>ACTION</th></tr></thead>
+      <tbody>
+        {% for s in students %}
+        <tr>
+          <td><div class="person"><span class="person-avatar">{{ s.name[:1]|upper }}</span>{{ s.name }}</div></td>
+          <td>{{ s.roll or '—' }}</td>
+          <td>{{ s.class_name or '—' }} / {{ s.section or '—' }}</td>
+          <td>{{ s.created_at[:10] }}</td>
+          <td>
+            <button type="button" class="btn outline small open-enroll" data-id="{{ s.id }}" data-name="{{ s.name }}">Enroll face</button>
+            <form class="inline-form" method="post" action="{{ url_for('delete_student', sid=s.id) }}" onsubmit="return confirm('Delete this student?');">
+              <button type="submit" class="icon-btn danger" title="Delete">×</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <span>♙</span>
+    <b>No students added</b>
+    <p>Start by creating your first student profile.</p>
+    <a href="{{ url_for('add_student') }}" class="btn primary">Add first student</a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="modal-backdrop" id="enrollModal">
+  <div class="modal">
+    <button type="button" class="modal-close" id="closeModalBtn">×</button>
+    <div class="eyebrow">FACE ENROLLMENT</div>
+    <h2>Enroll <span id="enrollStudentName">student</span></h2>
+    <p>Upload mobile or portrait JPG/PNG face photos. Low-light & mobile-compressed images are automatically enhanced and trained.</p>
+    <form id="enrollForm" enctype="multipart/form-data">
+      <input type="hidden" name="student_id" id="enrollStudentId">
+      <label class="upload-box">
+        <span>＋</span>
+        <b>Choose face photos</b>
+        <small>JPG or PNG · multiple images allowed</small>
+        <input type="file" name="images[]" accept=".jpg,.jpeg,.png" multiple required>
+      </label>
+      <div class="form-message" id="enrollMsg"></div>
+      <button type="submit" class="btn primary full">Upload photos & Auto-Update AI</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

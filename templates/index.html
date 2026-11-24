@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Overview · SmartAttend AI{% endblock %}
+{% block page_name %}Overview{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div>
+    <div class="eyebrow">CLASSROOM AT A GLANCE</div>
+    <h1>Good day, <span>Teacher.</span></h1>
+    <p>Here’s what’s happening with your attendance today.</p>
+  </div>
+  <a href="{{ url_for('mark_attendance_page') }}" class="btn primary">◎ Take attendance</a>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-top">Total students <span class="stat-icon blue">♙</span></div>
+    <strong>{{ student_count }}</strong>
+    <small>Registered in this workspace</small>
+  </div>
+  <div class="stat-card">
+    <div class="stat-top">Present today <span class="stat-icon green">✓</span></div>
+    <strong>{{ today_count }}</strong>
+    <small>Unique students marked present</small>
+  </div>
+  <div class="stat-card">
+    <div class="stat-top">Attendance rate <span class="stat-icon purple">↗</span></div>
+    <strong>{% if student_count %}{{ ((today_count/student_count)*100)|round|int }}%{% else %}0%{% endif %}</strong>
+    <small>Based on registered students</small>
+  </div>
+  <div class="stat-card">
+    <div class="stat-top">Recognition model <span class="stat-icon amber">✦</span></div>
+    <strong class="model-state">{% if trained %}Ready{% else %}Not trained{% endif %}</strong>
+    <small>{% if trained %}Auto-updated & ready{% else %}Enroll faces first{% endif %}</small>
+  </div>
+</div>
+
+<div class="content-grid">
+  <div class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>Attendance activity</h2>
+        <p>Unique students marked present · last 7 days</p>
+      </div>
+      <span class="mini-tag">THIS WEEK</span>
+    </div>
+    <div class="chart-bars">
+      {% set max_c = (last_days|map(attribute='count')|max) or 1 %}
+      {% for day in last_days %}
+      <div class="bar-col">
+        <span>{{ day.count }}</span>
+        <div class="bar-track"><div class="bar-fill" style="height:{{ ((day.count/max_c)*100)|round|int }}%"></div></div>
+        <small>{{ day.label }}</small>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>Quick actions</h2>
+        <p>Manage your attendance workflow</p>
+      </div>
+    </div>
+    <a href="{{ url_for('add_student') }}" class="action-row">
+      <span class="action-icon blue">＋</span>
+      <span><b>Add a student</b><small>Register a new student profile or import an Excel class list</small></span>
+      <i>→</i>
+    </a>
+    <a href="{{ url_for('mark_attendance_page') }}" class="action-row">
+      <span class="action-icon green">◎</span>
+      <span><b>Start recognition</b><small>Use your camera to mark present automatically</small></span>
+      <i>→</i>
+    </a>
+    <a href="{{ url_for('records') }}" class="action-row">
+      <span class="action-icon purple">▤</span>
+      <span><b>View attendance</b><small>Browse and export records</small></span>
+      <i>→</i>
+    </a>
+  </div>
+</div>
+
+<div class="panel recent-panel">
+  <div class="panel-head">
+    <div>
+      <h2>Recent attendance</h2>
+      <p>Latest recognition activity</p>
+    </div>
+    <a href="{{ url_for('records') }}" class="text-link">View all records →</a>
+  </div>
+  {% if recent %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>STUDENT</th><th>DATE & TIME</th><th>STATUS</th></tr></thead>
+      <tbody>
+        {% for r in recent %}
+        <tr>
+          <td><div class="person"><span class="person-avatar">{{ r.name[:1]|upper }}</span>{{ r.name }}</div></td>
+          <td>{{ r.timestamp }}</td>
+          <td><span class="status present">● Present</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <span>▤</span>
+    <b>No attendance records yet</b>
+    <p>When a student is recognized, their attendance will appear here.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

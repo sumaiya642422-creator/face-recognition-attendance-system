@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# Flask / local runtime state
+.secret_key
+.env
+*.db
+*.sqlite
+*.sqlite3
+*.pkl
+train_status.json
+
+# Generated runtime directories
+dataset/
+tenant_data/
+models/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

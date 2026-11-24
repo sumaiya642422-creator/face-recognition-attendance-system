@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}SmartAttend AI{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Manrope:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <a class="brand" href="{{ url_for('index') }}">
+      <span class="brand-mark">◈</span>
+      <span>SmartAttend <span class="brand-ai">AI</span><small>FACE RECOGNITION</small></span>
+    </a>
+    <div class="side-label">WORKSPACE</div>
+    <nav>
+      <a href="{{ url_for('index') }}" class="{% if request.endpoint=='index' %}active{% endif %}"><span>▦</span> Overview</a>
+      <a href="{{ url_for('students_page') }}" class="{% if request.endpoint in ['students_page','add_student'] %}active{% endif %}"><span>♙</span> Students</a>
+      <a href="{{ url_for('mark_attendance_page') }}" class="{% if request.endpoint=='mark_attendance_page' %}active{% endif %}"><span>◎</span> Mark attendance</a>
+      <a href="{{ url_for('records') }}" class="{% if request.endpoint=='records' %}active{% endif %}"><span>▤</span> Attendance records</a>
+      <a href="{{ url_for('courses_page') }}"><span>▧</span> Courses</a>
+      <a href="{{ url_for('registration_link') }}"><span>↗</span> Student registration</a>
+      <a href="{{ url_for('approvals') }}"><span>✓</span> Approvals</a>
+    </nav>
+        <div class="sidebar-bottom">
+      <div class="secure-icon" style="width:42px;height:42px;border-radius:12px;margin-bottom:12px;">
+        <svg width="26" height="26" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-label="Smart Attendance face recognition logo"><path d="M7 11V7a2 2 0 0 1 2-2h4M25 11V7a2 2 0 0 0-2-2h-4M7 21v4a2 2 0 0 0 2 2h4M25 21v4a2 2 0 0 1-2 2h-4"/><path d="M12 14v1M20 14v1M12 21c2.2 2 5.8 2 8 0"/><path d="m22 23 2 2 4-4"/></svg>
+      </div>
+      <b>Smart Attendance</b>
+      <p>AI-powered face recognition & automated attendance.</p>
+      <div class="version">SYSTEM · v2.0 SECURE</div>
+    </div>
+  </aside>
+  <div class="main-area">
+    <header class="topbar">
+      <div class="breadcrumb">Workspace <span class="crumb-sep">/</span> <b>{% block page_name %}Overview{% endblock %}</b></div>
+      <div class="top-right"><i class="live-dot"></i> System ready <a href="{{ url_for('logout') }}" class="text-link">Log out</a><span class="avatar">SA</span></div>
+    </header>
+    <main class="page-content">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category,message in messages %}
+            <div class="flash {{ category }}">{{ message }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+    <footer>SmartAttend AI <span>•</span> Automated Biometric Attendance System</footer>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

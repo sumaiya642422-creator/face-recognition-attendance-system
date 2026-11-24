@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Attendance records · SmartAttend AI{% endblock %}
+{% block page_name %}Attendance records{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div>
+    <div class="eyebrow">ATTENDANCE HISTORY</div>
+    <h1>Attendance <span>records</span></h1>
+    <p>Review, filter and export recognized attendance.</p>
+  </div>
+  <a href="{{ url_for('download_csv') }}" class="btn primary">↓ Export CSV</a>
+</div>
+
+<div class="panel">
+  <div class="filter-row">
+    <div>
+      <h2>All records</h2>
+      <p>{{ records|length }} record(s) shown</p>
+    </div>
+    <div class="filter-tabs">
+      <a href="{{ url_for('records', period='all') }}" class="{% if period=='all' %}selected{% endif %}">All</a>
+      <a href="{{ url_for('records', period='today') }}" class="{% if period=='today' %}selected{% endif %}">Today</a>
+      <a href="{{ url_for('records', period='week') }}" class="{% if period=='week' %}selected{% endif %}">7 days</a>
+      <a href="{{ url_for('records', period='month') }}" class="{% if period=='month' %}selected{% endif %}">30 days</a>
+    </div>
+  </div>
+  {% if records %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>STUDENT</th><th>ROLL</th><th>CLASS</th><th>COURSE</th><th>DATE & TIME</th><th>STATUS</th></tr></thead>
+      <tbody>
+        {% for r in records %}
+        <tr>
+          <td><div class="person"><span class="person-avatar">{{ r.name[:1]|upper }}</span>{{ r.name }}</div></td>
+          <td>{{ r.roll or '—' }}</td>
+          <td>{{ r.class_name or '—' }}</td>
+          <td>{{ r.course_code or 'Legacy record' }}</td>
+          <td>{{ r.timestamp }}</td>
+          <td><span class="status present">● Present</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <span>▤</span>
+    <b>No records found</b>
+    <p>Attendance records will appear after a successful face recognition.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

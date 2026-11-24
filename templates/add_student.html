@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Add student · SmartAttend AI{% endblock %}
+{% block page_name %}Add student{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div>
+    <div class="eyebrow">STUDENT DIRECTORY</div>
+    <h1>Add a <span>student</span></h1>
+    <p>Register one student manually or upload one Excel file to import an entire class.</p>
+  </div>
+  <a href="{{ url_for('students_page') }}" class="btn outline">← Back to students</a>
+</div>
+
+<!-- REGISTRATION MODE SWITCHER TABS -->
+<div class="filter-row" style="margin-bottom:20px;">
+  <div class="filter-tabs" style="display:inline-flex;">
+    <button type="button" id="tabManual" class="selected" onclick="switchTab('manual')">Single student manual</button>
+    <button type="button" id="tabBatch" onclick="switchTab('batch')">Excel Class Upload</button>
+  </div>
+  <div><small style="color:var(--muted)">Select registration mode</small></div>
+</div>
+
+<!-- SINGLE STUDENT FORM (DEFAULT) -->
+<form id="manualForm" class="panel form-panel" method="post" enctype="multipart/form-data">
+  <div class="form-section-title">Single student manual registration</div>
+  <div class="form-grid">
+    <label>Full name <em>*</em><input type="text" name="name" required placeholder="e.g. Sumaiya Akter"></label>
+    <label>Student roll<input type="text" name="roll" placeholder="e.g. 101"></label>
+    <label>Class / batch<input type="text" name="class_name" placeholder="e.g. CSE-12"></label>
+    <label>Section<input type="text" name="section" placeholder="e.g. A"></label>
+    <label class="span-2">Registration number<input type="text" name="reg_no" placeholder="e.g. 2026-001"></label>
+    <label class="span-2">Face photographs (Mobile photos supported — multiple photos recommended)
+      <input type="file" name="images[]" accept=".jpg,.jpeg,.png" multiple>
+    </label>
+  </div>
+  <div class="notice">
+    <b>Smart Mobile & Low-Light Enhancement:</b> Standard mobile photos (WhatsApp/Messenger/Gallery) are automatically enhanced and enrolled immediately—no DSLR quality or manual training needed.
+  </div>
+  <div class="form-actions">
+    <a href="{{ url_for('students_page') }}" class="btn outline">Cancel</a>
+    <button type="submit" class="btn primary">Save student →</button>
+  </div>
+</form>
+
+<!-- EXCEL CLASS IMPORT -->
+<form id="batchForm" class="panel form-panel" method="post" action="{{ url_for('upload_excel_students') }}" enctype="multipart/form-data" style="display:none;">
+  <div class="form-section-title">Import an entire class from Excel</div>
+  <p style="font-size:12px; color:var(--muted); margin-bottom:15px; margin-top:-14px;">
+    Select one .xlsx file. All student rows will be added together.
+  </p>
+
+  <label style="font-size:12px; font-weight:700; color:#58657c; display:block; margin-bottom:14px;">
+    Excel file (.xlsx)
+    <input type="file" name="excel_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required style="display:block; width:100%; margin-top:8px; padding:10px; border:1px solid #e2e7ef; border-radius:8px; font:12px 'DM Sans'; background:#fff;">
+  </label>
+  <p style="font-size:12px; margin-top:-6px; margin-bottom:14px;">
+    Need a ready-made format? <a href="{{ url_for('download_student_template') }}" style="color:var(--accent); font-weight:700;">Download Excel template</a>
+  </p>
+
+  <div class="notice">
+    <b>Excel column format:</b> The first row must contain headings: <b>Name</b>, Roll, Class, Section, Reg No. Only Name is required; the other columns are optional. Each following row should contain one student's details.
+    <br><br>
+    <b>After import:</b> Open the student list and enroll each student's face photos. Excel import adds student details; it does not create face data.
+  </div>
+  <div class="form-actions">
+    <a href="{{ url_for('students_page') }}" class="btn outline">Cancel</a>
+    <button type="submit" class="btn primary">Upload Excel &amp; Import Students →</button>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+function switchTab(mode) {
+  const manualForm = document.getElementById('manualForm');
+  const batchForm = document.getElementById('batchForm');
+  const tabManual = document.getElementById('tabManual');
+  const tabBatch = document.getElementById('tabBatch');
+  
+  if (mode === 'manual') {
+    manualForm.style.display = 'block';
+    batchForm.style.display = 'none';
+    tabManual.classList.add('selected');
+    tabBatch.classList.remove('selected');
+  } else {
+    manualForm.style.display = 'none';
+    batchForm.style.display = 'block';
+    tabBatch.classList.add('selected');
+    tabManual.classList.remove('selected');
+  }
+}
+</script>
+{% endblock %}

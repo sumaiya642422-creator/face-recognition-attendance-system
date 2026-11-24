@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Mark attendance · SmartAttend AI{% endblock %}
+{% block page_name %}Mark attendance{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div>
+    <div class="eyebrow">LIVE FACE RECOGNITION</div>
+    <h1>Mark <span>attendance</span></h1>
+    <p>Position an enrolled student in front of the camera for automatic real-time recognition.</p>
+  </div>
+  <span class="mini-tag">{% if trained %}MODEL READY{% else %}MODEL NOT TRAINED{% endif %}</span>
+</div>
+
+<div class="panel" style="margin-bottom:18px">
+  <div class="panel-head"><div><h2>Start class attendance</h2><p>Select your course, then start the 30-minute automatic attendance period.</p></div></div>
+  <div class="camera-controls" style="margin-top:12px">
+    <select id="courseSelect" aria-label="Select course">
+      <option value="">Select course</option>
+      {% for course in courses %}<option value="{{ course.course_code }}">{{ course.course_code }}</option>{% endfor %}
+    </select>
+    <button type="button" class="btn primary" id="startClassBtn">Start Class (30 min)</button>
+    <button type="button" class="btn outline" id="endClassBtn">End Class</button>
+    <span id="classTimer" class="mini-tag">Class not started</span>
+  </div>
+</div>
+
+<div class="camera-layout">
+  <div class="panel camera-panel">
+    <div class="panel-head">
+      <div>
+        <h2>Camera preview</h2>
+        <p>Allow browser camera access when prompted.</p>
+      </div>
+      <span class="live-pill"><i></i>LIVE</span>
+    </div>
+    <div class="camera-frame">
+      <video id="video" autoplay playsinline muted></video>
+      <div class="camera-guide"></div>
+      <div class="camera-placeholder" id="camPlaceholder">
+        <span>◎</span>
+        <b>Camera is not active</b>
+        <small>Click Start camera to begin automatic face recognition</small>
+      </div>
+    </div>
+    <div class="camera-controls">
+      <button type="button" class="btn primary" id="startCamBtn">Start camera</button>
+      <button type="button" class="btn outline" id="stopCamBtn">Stop camera</button>
+      <button type="button" class="btn outline" id="captureBtn">◎ Capture & recognize now</button>
+    </div>
+    <div class="form-message">Low-light compensation & continuous face tracking enabled for classroom presentations.</div>
+  </div>
+
+  <div class="panel result-panel">
+    <div class="result-symbol">✦</div>
+    <h2 id="resTitle">Recognition result</h2>
+    <p id="resSub">Your recognition result will appear here automatically.</p>
+    <div class="result-details">
+      <span>STATUS</span>
+      <b id="resStatus">Waiting for camera</b>
+      <small id="resName">—</small>
+      <small id="resMeta">Ready to scan</small>
+    </div>
+    <div class="notice">
+      Automatically adapts to dim classroom lighting and natural head movements while blocking unregistered faces.
+    </div>
+    <a href="{{ url_for('students_page') }}" class="text-link">Manage enrolled students →</a>
+  </div>
+</div>
+
+<div class="panel train-panel">
+  <div>
+    <h3>Manual Re-sync (Optional)</h3>
+    <p>The AI model updates automatically when you add photos. Use this only if you manually changed dataset folders.</p>
+  </div>
+  <button type="button" class="btn outline" id="trainBtn">Re-sync model</button>
+  <div class="form-message" id="trainMsg"></div>
+</div>
+{% endblock %}
