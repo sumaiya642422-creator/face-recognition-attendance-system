@@ -1,6 +1,7 @@
 import os, io, csv, json, sqlite3, threading, secrets, functools
 from datetime import datetime, date, timedelta
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, flash, session, abort, has_request_context
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from openpyxl import load_workbook
@@ -18,13 +19,15 @@ from model import (
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LEGACY_DB_PATH = os.path.join(BASE_DIR, "attendance.db")
-ACCOUNT_DB_PATH = os.path.join(BASE_DIR, "accounts.db")
-TENANT_ROOT = os.path.join(BASE_DIR, "tenant_data")
+DATA_DIR = os.environ.get("DATA_DIR") or BASE_DIR
+os.makedirs(DATA_DIR, exist_ok=True)
+LEGACY_DB_PATH = os.path.join(DATA_DIR, "attendance.db")
+ACCOUNT_DB_PATH = os.path.join(DATA_DIR, "accounts.db")
+TENANT_ROOT = os.path.join(DATA_DIR, "tenant_data")
 DB_PATH = LEGACY_DB_PATH
-DATASET_DIR = os.path.join(BASE_DIR, "dataset")
-MODEL_PATH = os.path.join(BASE_DIR, "model.pkl")
-STATUS_PATH = os.path.join(BASE_DIR, "train_status.json")
+DATASET_DIR = os.path.join(DATA_DIR, "dataset")
+MODEL_PATH = os.path.join(DATA_DIR, "model.pkl")
+STATUS_PATH = os.path.join(DATA_DIR, "train_status.json")
 
 def tenant_id(): return str(session.get("tenant_id", "legacy")) if has_request_context() else "legacy"
 def tenant_root():
@@ -42,7 +45,7 @@ def login_required(fn):
     return wrapped
 
 def account_db():
-    con=sqlite3.connect(ACCOUNT_DB_PATH); con.row_factory=sqlite3.Row; return con
+    con=sqlite3.connect(ACCOUNT_DB_PATH, timeout=15.0); con.row_factory=sqlite3.Row; return con
 
 def init_accounts():
     os.makedirs(TENANT_ROOT, exist_ok=True)
@@ -52,7 +55,7 @@ def init_accounts():
 
 def create_tenant_database(tid):
     folder=os.path.join(TENANT_ROOT,str(tid)); os.makedirs(os.path.join(folder,"dataset"),exist_ok=True)
-    con=sqlite3.connect(os.path.join(folder,"attendance.db")); con.row_factory=sqlite3.Row
+    con=sqlite3.connect(os.path.join(folder,"attendance.db"), timeout=15.0); con.row_factory=sqlite3.Row
     con.execute("CREATE TABLE IF NOT EXISTS students (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,roll TEXT,class_name TEXT,section TEXT,reg_no TEXT,created_at TEXT NOT NULL,email TEXT DEFAULT '',approval_status TEXT NOT NULL DEFAULT 'approved',biometric_consent INTEGER NOT NULL DEFAULT 0)")
     con.execute("CREATE TABLE IF NOT EXISTS attendance (id INTEGER PRIMARY KEY AUTOINCREMENT,student_id INTEGER NOT NULL,name TEXT NOT NULL,timestamp TEXT NOT NULL,course_code TEXT,FOREIGN KEY(student_id) REFERENCES students(id))")
     con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_student_course_daily ON attendance(student_id,course_code,date(timestamp)) WHERE course_code IS NOT NULL")
@@ -66,7 +69,8 @@ ALLOWED = {"jpg", "jpeg", "png"}
 
 os.makedirs(DATASET_DIR, exist_ok=True)
 app = Flask(__name__)
-_secret_file=os.path.join(BASE_DIR,".secret_key")
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+_secret_file=os.path.join(DATA_DIR,".secret_key")
 if not os.path.exists(_secret_file):
     with open(_secret_file,"w",encoding="utf-8") as _f: _f.write(secrets.token_hex(32))
 app.secret_key = os.environ.get("SECRET_KEY") or open(_secret_file,encoding="utf-8").read().strip()
@@ -75,7 +79,7 @@ app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax", S
 
 def db():
     path=LEGACY_DB_PATH if tenant_id()=="legacy" else os.path.join(TENANT_ROOT,tenant_id(),"attendance.db")
-    conn=sqlite3.connect(path); conn.row_factory=sqlite3.Row; return conn
+    conn=sqlite3.connect(path, timeout=15.0); conn.row_factory=sqlite3.Row; return conn
 
 def init_db():
     with db() as con:
@@ -830,6 +834,11 @@ def clear_all_students():
     write_status({"running": False, "progress": 0, "message": "All student face data cleared. Register students to continue."})
     flash("All students, attendance records, face photos, and enrolled face data were cleared.", "success")
     return redirect(url_for("students_page"))
+
+@app.route("/health")
+def health():
+    return jsonify(ok=True), 200
+
 
 @app.errorhandler(413)
 def too_large(_):

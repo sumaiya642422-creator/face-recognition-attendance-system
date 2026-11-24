@@ -124,9 +124,10 @@ def detect_all_faces(image):
     for mp_img in [image, enhance_low_light_and_mobile_image(image)]:
         all_faces = []
         try:
-            mp_det = _get_mp_detector()
-            rgb = cv2.cvtColor(mp_img, cv2.COLOR_BGR2RGB)
-            res = mp_det.process(rgb)
+            with _lock:
+                mp_det = _get_mp_detector()
+                rgb = cv2.cvtColor(mp_img, cv2.COLOR_BGR2RGB)
+                res = mp_det.process(rgb)
             if res.detections:
                 for det in res.detections:
                     bb = det.location_data.relative_bounding_box

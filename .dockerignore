@@ -1,0 +1,15 @@
+.git/
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+.secret_key
+.env
+*.db
+*.sqlite
+*.sqlite3
+*.pkl
+train_status.json
+dataset/
+tenant_data/
+models/
