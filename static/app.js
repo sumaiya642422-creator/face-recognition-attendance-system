@@ -20,6 +20,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let unknownStreak = 0;
     let spoofStreak = 0;
     let noFaceStreak = 0;
+
+    // ── Multi-frame liveness: track pixel changes between consecutive captures ──
+    let prevFrameData = null;
+    let motionHistory = [];        // rolling window of motion scores
+    const MOTION_WINDOW = 5;       // require motion evidence over last 5 frames
+    const MIN_MOTION_SCORE = 0.008; // minimum average pixel change ratio for liveness
+    let livenessConfirmed = false;
+    let livenessFailStreak = 0;
     const startClassBtn = document.getElementById('startClassBtn');
     const endClassBtn = document.getElementById('endClassBtn');
     const courseSelect = document.getElementById('courseSelect');
@@ -59,6 +67,57 @@ document.addEventListener('DOMContentLoaded', () => {
             canvas.height = video.videoHeight || 480;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // ── Multi-frame liveness: detect natural head/face motion ──
+            // A static photo on a phone screen produces near-zero pixel change
+            // between frames; a real live person always has micro-movements.
+            const currentFrameData = ctx.getImageData(
+                Math.floor(canvas.width * 0.25), Math.floor(canvas.height * 0.2),
+                Math.floor(canvas.width * 0.5), Math.floor(canvas.height * 0.6)
+            );
+            if (prevFrameData && prevFrameData.data.length === currentFrameData.data.length) {
+                let diffSum = 0;
+                const len = currentFrameData.data.length;
+                // Sample every 16th pixel for performance (RGBA, so step by 64)
+                for (let px = 0; px < len; px += 64) {
+                    diffSum += Math.abs(currentFrameData.data[px] - prevFrameData.data[px]);
+                    diffSum += Math.abs(currentFrameData.data[px + 1] - prevFrameData.data[px + 1]);
+                    diffSum += Math.abs(currentFrameData.data[px + 2] - prevFrameData.data[px + 2]);
+                }
+                const sampledPixels = Math.floor(len / 64) * 3;
+                const motionScore = diffSum / (sampledPixels * 255);
+                motionHistory.push(motionScore);
+                if (motionHistory.length > MOTION_WINDOW) motionHistory.shift();
+
+                const avgMotion = motionHistory.reduce((a, b) => a + b, 0) / motionHistory.length;
+                if (avgMotion >= MIN_MOTION_SCORE) {
+                    livenessConfirmed = true;
+                    livenessFailStreak = 0;
+                } else if (motionHistory.length >= MOTION_WINDOW) {
+                    livenessFailStreak += 1;
+                    // After several consecutive static frames, treat as a photo
+                    if (livenessFailStreak >= 3) {
+                        livenessConfirmed = false;
+                    }
+                }
+            }
+            prevFrameData = currentFrameData;
+
+            // If liveness check consistently fails (static image), block without
+            // even sending to server — saves bandwidth and server CPU.
+            if (motionHistory.length >= MOTION_WINDOW && !livenessConfirmed && livenessFailStreak >= 4) {
+                if (resTitle) resTitle.textContent = 'Liveness Check Failed';
+                if (resSub) resSub.textContent = 'No natural movement detected. Please present your real face, not a photo.';
+                if (resStatus) {
+                    resStatus.textContent = 'PHOTO DETECTED';
+                    resStatus.style.color = '#dc6470';
+                }
+                if (resName) resName.textContent = '—';
+                if (resMeta) resMeta.textContent = 'Move your head slightly to confirm you are a real person';
+                activeStudent = null;
+                isProcessing = false;
+                return;
+            }
 
             const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.90));
             if (!blob) return;
@@ -208,6 +267,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 unknownStreak = 0;
                 spoofStreak = 0;
                 noFaceStreak = 0;
+                prevFrameData = null;
+                motionHistory = [];
+                livenessConfirmed = false;
+                livenessFailStreak = 0;
                 if (resTitle) resTitle.textContent = 'No Face Detected';
                 if (resSub) resSub.textContent = 'Looking for a face in front of the camera...';
                 if (resStatus) {
@@ -234,6 +297,10 @@ document.addEventListener('DOMContentLoaded', () => {
             unknownStreak = 0;
             spoofStreak = 0;
             noFaceStreak = 0;
+            prevFrameData = null;
+            motionHistory = [];
+            livenessConfirmed = false;
+            livenessFailStreak = 0;
             if (camPlaceholder) camPlaceholder.style.display = 'grid';
             if (resTitle) resTitle.textContent = 'Recognition result';
             if (resSub) resSub.textContent = 'Your recognition result will appear here automatically.';

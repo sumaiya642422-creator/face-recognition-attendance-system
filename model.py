@@ -187,7 +187,146 @@ def check_image_quality(image, face_15, is_enrollment=False):
         return False, f"Image is completely washed out (brightness: {brightness:.1f})."
     return True, "Quality verified"
 
+def _compute_lbp(gray, radius=1, n_points=8):
+    """Compute a simplified Local Binary Pattern histogram for texture analysis."""
+    h, w = gray.shape
+    lbp = np.zeros_like(gray, dtype=np.uint8)
+    for i in range(n_points):
+        angle = 2.0 * np.pi * i / n_points
+        dx = int(round(radius * np.cos(angle)))
+        dy = int(round(-radius * np.sin(angle)))
+        # Shift the image and compare
+        y1, y2 = max(0, dy), min(h, h + dy)
+        x1, x2 = max(0, dx), min(w, w + dx)
+        ny1, ny2 = max(0, -dy), min(h, h - dy)
+        nx1, nx2 = max(0, -dx), min(w, w - dx)
+        lbp[ny1:ny2, nx1:nx2] |= ((gray[y1:y2, x1:x2] >= gray[ny1:ny2, nx1:nx2]).astype(np.uint8) << i)
+    hist, _ = np.histogram(lbp.ravel(), bins=256, range=(0, 256))
+    hist = hist.astype(np.float32)
+    total = hist.sum()
+    if total > 0:
+        hist /= total
+    return hist, lbp
+
+
+def _detect_moire_patterns(gray_face):
+    """Detect moiré interference patterns typical of screens captured by cameras."""
+    resized = cv2.resize(gray_face, (128, 128))
+    f_transform = np.fft.fft2(resized.astype(np.float32))
+    f_shift = np.fft.fftshift(f_transform)
+    magnitude = np.log1p(np.abs(f_shift))
+
+    h, w = magnitude.shape
+    cy, cx = h // 2, w // 2
+    # Mask out the DC component and very low frequencies
+    mask = np.ones_like(magnitude, dtype=bool)
+    rr, cc = np.ogrid[:h, :w]
+    low_freq_mask = (rr - cy) ** 2 + (cc - cx) ** 2 <= 6 ** 2
+    mask[low_freq_mask] = False
+
+    high_freq = magnitude[mask]
+    if high_freq.size == 0:
+        return 0.0
+
+    # Moiré patterns create periodic spikes in mid-to-high frequency bands
+    mean_mag = float(np.mean(high_freq))
+    std_mag = float(np.std(high_freq))
+    # Count significant frequency spikes (potential moiré)
+    if std_mag > 0:
+        spikes = np.sum(high_freq > mean_mag + 2.5 * std_mag)
+        spike_ratio = float(spikes) / high_freq.size
+    else:
+        spike_ratio = 0.0
+    return spike_ratio
+
+
+def _analyze_skin_color_distribution(face_crop):
+    """Analyze whether the face color distribution matches natural skin tones.
+    Screens produce narrower, shifted color distributions compared to real skin."""
+    hsv = cv2.cvtColor(face_crop, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(hsv)
+
+    # Natural skin hue is roughly 0-50 in OpenCV HSV (0-180 scale)
+    skin_mask = ((h < 25) | (h > 165)) & (s > 20) & (v > 40)
+    skin_ratio = float(np.sum(skin_mask)) / max(1, skin_mask.size)
+
+    # Screen-displayed faces often have abnormal saturation uniformity
+    if skin_ratio > 0.15:
+        skin_s = s[skin_mask]
+        skin_v = v[skin_mask]
+        s_std = float(np.std(skin_s)) if skin_s.size > 10 else 999.0
+        v_std = float(np.std(skin_v)) if skin_v.size > 10 else 999.0
+    else:
+        s_std = 999.0
+        v_std = 999.0
+
+    return skin_ratio, s_std, v_std
+
+
+def _analyze_specular_highlights(gray_face):
+    """Analyze specular highlight patterns. Screens produce broad, uniform highlights;
+    real faces produce small, varied highlight spots on skin curvature."""
+    bright_thresh = 220
+    bright_mask = (gray_face > bright_thresh).astype(np.uint8) * 255
+    bright_ratio = float(np.sum(gray_face > bright_thresh)) / max(1, gray_face.size)
+
+    if bright_ratio < 0.005:
+        return 0.0, 0, 0.0  # Too few highlights to analyze
+
+    # Count distinct highlight blobs
+    contours, _ = cv2.findContours(bright_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    num_blobs = len(contours)
+
+    # Calculate uniformity of highlight blob sizes
+    if num_blobs > 1:
+        areas = [cv2.contourArea(c) for c in contours]
+        area_std = float(np.std(areas)) / max(1.0, float(np.mean(areas)))
+    else:
+        area_std = 0.0
+
+    return bright_ratio, num_blobs, area_std
+
+
+def _analyze_face_depth_texture(gray_face):
+    """Real faces have natural depth variation (nose protrudes, eyes are recessed)
+    which creates characteristic gradient patterns. Flat images lack this."""
+    resized = cv2.resize(gray_face, (112, 112))
+    # Compute gradient magnitude
+    gx = cv2.Sobel(resized, cv2.CV_64F, 1, 0, ksize=3)
+    gy = cv2.Sobel(resized, cv2.CV_64F, 0, 1, ksize=3)
+    grad_mag = np.sqrt(gx ** 2 + gy ** 2)
+
+    # Divide face into regions (forehead, eyes, nose, mouth, cheeks)
+    h, w = resized.shape
+    regions = [
+        resized[0:h // 4, w // 4:3 * w // 4],          # forehead
+        resized[h // 4:h // 2, 0:w // 3],               # left eye area
+        resized[h // 4:h // 2, 2 * w // 3:w],           # right eye area
+        resized[h // 3:2 * h // 3, w // 3:2 * w // 3],  # nose bridge
+        resized[2 * h // 3:h, w // 4:3 * w // 4],       # mouth/chin
+    ]
+    grad_regions = [
+        grad_mag[0:h // 4, w // 4:3 * w // 4],
+        grad_mag[h // 4:h // 2, 0:w // 3],
+        grad_mag[h // 4:h // 2, 2 * w // 3:w],
+        grad_mag[h // 3:2 * h // 3, w // 3:2 * w // 3],
+        grad_mag[2 * h // 3:h, w // 4:3 * w // 4],
+    ]
+
+    # Real faces have different brightness means and gradient magnitudes across regions
+    brightness_values = [float(np.mean(r)) for r in regions if r.size > 0]
+    gradient_values = [float(np.mean(r)) for r in grad_regions if r.size > 0]
+
+    brightness_variance = float(np.std(brightness_values)) if len(brightness_values) > 1 else 0.0
+    gradient_variance = float(np.std(gradient_values)) if len(gradient_values) > 1 else 0.0
+
+    return brightness_variance, gradient_variance
+
+
 def detect_presentation_attack(image, face_15):
+    """Multi-layered anti-spoofing: detects photos displayed on phone/tablet screens,
+    paper printouts, and other presentation attacks using texture, color, frequency,
+    and structural analysis."""
     ih, iw = image.shape[:2]
     fx, fy, fw, fh = [int(v) for v in face_15[:4]]
     face_crop = image[max(0, fy):min(ih, fy + fh), max(0, fx):min(iw, fx + fw)]
@@ -195,9 +334,17 @@ def detect_presentation_attack(image, face_15):
         return False, "Live face"
 
     gray_face = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
+    spoof_score = 0.0  # Accumulate evidence; threshold at the end
+
+    # ── Layer 1: Screen glare (original, kept) ──
     glare_pixels = np.sum(gray_face > 253)
     glare_ratio = glare_pixels / float(face_crop.shape[0] * face_crop.shape[1])
+    if glare_ratio > 0.22:
+        return True, f"Strong screen glare detected ({glare_ratio * 100:.1f}% saturated pixels)"
+    if glare_ratio > 0.08:
+        spoof_score += 0.20
 
+    # ── Layer 2: Rectangular bezel/border detection (original, kept) ──
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     edges = cv2.Canny(blurred, 55, 150)
@@ -225,18 +372,112 @@ def detect_presentation_attack(image, face_15):
                     elif (fx + fw + 8) < mid_x <= (fx + fw * 1.45):
                         right_line = True
     enclosing_count = sum([top_line, bottom_line, left_line, right_line])
-
-    if glare_ratio > 0.22:
-        return True, f"Strong screen glare detected ({glare_ratio * 100:.1f}% saturated pixels)"
     if enclosing_count == 4:
         return True, "Phone/tablet screen or paper boundary detected around face"
     if enclosing_count >= 3 and glare_ratio > 0.06:
         return True, "Display bezel with screen reflection detected"
+    if enclosing_count >= 2:
+        spoof_score += 0.15
 
+    # ── Layer 3: Flat color (paper printout, original improved) ──
     ycrcb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2YCrCb)
     _, cr, cb = cv2.split(ycrcb)
-    if np.std(cr) < 2.2 and np.std(cb) < 2.2:
+    cr_std = float(np.std(cr))
+    cb_std = float(np.std(cb))
+    if cr_std < 2.2 and cb_std < 2.2:
         return True, "Flat paper printout texture detected"
+    if cr_std < 4.0 and cb_std < 4.0:
+        spoof_score += 0.15
+
+    # ── Layer 4: LBP texture analysis (NEW — most effective against phone photos) ──
+    try:
+        face_resized = cv2.resize(gray_face, (96, 96))
+        lbp_hist, _ = _compute_lbp(face_resized, radius=1, n_points=8)
+        # Real skin has diverse micro-textures → higher LBP histogram entropy
+        # Screens/prints have smoother, more uniform texture → lower entropy
+        nonzero = lbp_hist[lbp_hist > 0]
+        lbp_entropy = -float(np.sum(nonzero * np.log2(nonzero))) if nonzero.size > 0 else 0.0
+
+        # Concentration: how much of the histogram is in the top few bins
+        sorted_hist = np.sort(lbp_hist)[::-1]
+        top_concentration = float(np.sum(sorted_hist[:10]))  # top 10 bins out of 256
+
+        # Screen-displayed photos have lower texture entropy and higher concentration
+        if lbp_entropy < 4.5 and top_concentration > 0.55:
+            spoof_score += 0.35
+        elif lbp_entropy < 5.2 and top_concentration > 0.45:
+            spoof_score += 0.20
+        elif lbp_entropy < 5.8 and top_concentration > 0.40:
+            spoof_score += 0.10
+    except Exception:
+        pass
+
+    # ── Layer 5: Moiré pattern detection (NEW — screens show moiré when photographed) ──
+    try:
+        moire_score = _detect_moire_patterns(gray_face)
+        if moire_score > 0.015:
+            spoof_score += 0.30
+        elif moire_score > 0.008:
+            spoof_score += 0.15
+        elif moire_score > 0.004:
+            spoof_score += 0.08
+    except Exception:
+        pass
+
+    # ── Layer 6: Skin color distribution analysis (NEW) ──
+    try:
+        skin_ratio, s_std, v_std = _analyze_skin_color_distribution(face_crop)
+        # Very low saturation variation in skin area → likely a screen
+        if skin_ratio > 0.15 and s_std < 8.0 and v_std < 12.0:
+            spoof_score += 0.25
+        elif skin_ratio > 0.15 and s_std < 12.0 and v_std < 18.0:
+            spoof_score += 0.12
+    except Exception:
+        pass
+
+    # ── Layer 7: Specular highlight analysis (NEW) ──
+    try:
+        bright_ratio, num_blobs, area_std = _analyze_specular_highlights(gray_face)
+        # Screens: few large uniform highlight areas; real faces: many small varied spots
+        if bright_ratio > 0.02 and num_blobs <= 2 and area_std < 0.3:
+            spoof_score += 0.15
+    except Exception:
+        pass
+
+    # ── Layer 8: Depth/gradient texture analysis (NEW) ──
+    try:
+        bri_var, grad_var = _analyze_face_depth_texture(gray_face)
+        # Real faces have depth: nose, eye sockets, cheekbones create varied gradients
+        # Flat photos have uniform gradients across regions
+        if bri_var < 6.0 and grad_var < 4.0:
+            spoof_score += 0.20
+        elif bri_var < 10.0 and grad_var < 7.0:
+            spoof_score += 0.10
+    except Exception:
+        pass
+
+    # ── Layer 9: Edge density around face (phone/tablet frame detection, improved) ──
+    try:
+        # Expand region around face to look for device edges
+        margin = int(max(fw, fh) * 0.3)
+        ex1, ey1 = max(0, fx - margin), max(0, fy - margin)
+        ex2, ey2 = min(iw, fx + fw + margin), min(ih, fy + fh + margin)
+        surround = gray[ey1:ey2, ex1:ex2]
+        if surround.size > 0:
+            surround_edges = cv2.Canny(surround, 50, 150)
+            edge_density = float(np.sum(surround_edges > 0)) / max(1, surround_edges.size)
+            # Very high edge density around the face → likely a device border
+            if edge_density > 0.18:
+                spoof_score += 0.12
+    except Exception:
+        pass
+
+    # ── Final decision based on accumulated spoof evidence ──
+    if spoof_score >= 0.50:
+        return True, f"Presentation attack detected (spoof confidence: {spoof_score * 100:.0f}%): face appears to be displayed on a screen or printed"
+    if spoof_score >= 0.40:
+        return True, f"Suspected screen/photo attack (spoof confidence: {spoof_score * 100:.0f}%): texture and color patterns inconsistent with live face"
+
     return False, "Live face verified"
 
 def compute_embedding_from_image(image, face_15):
